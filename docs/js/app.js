@@ -19,7 +19,6 @@ const LOW_BATTERY = 20;
 const DOTS_PER_MM = 8;
 const KEEP_ALIVE_MS = 60000;
 const REPROCESS_DELAY_MS = 250;
-const SHARED_CACHE = "catprinter-shared";
 
 const $ = (id) => document.getElementById(id);
 
@@ -402,18 +401,15 @@ async function receiveLaunchedFiles() {
     });
   }
 
+  // The service worker keeps shared files in memory (never on disk) until we ask.
   const url = new URL(location.href);
-  if (!url.searchParams.has("compartido") || !("caches" in window)) return;
+  if (!url.searchParams.has("compartido") || !("serviceWorker" in navigator)) return;
   history.replaceState(null, "", url.pathname);
-  const cache = await caches.open(SHARED_CACHE);
-  const files = [];
-  for (const request of await cache.keys()) {
-    const response = await cache.match(request);
-    const name = decodeURIComponent(response.headers.get("X-File-Name") || "archivo");
-    files.push(new File([await response.blob()], name, { type: response.headers.get("Content-Type") }));
-    await cache.delete(request);
-  }
-  if (files.length) openFiles(files);
+  navigator.serviceWorker.addEventListener("message", ({ data }) => {
+    if (data?.type === "shared-files" && data.files.length) openFiles(data.files);
+  });
+  const registration = await navigator.serviceWorker.ready;
+  registration.active.postMessage("shared-files");
 }
 
 // --------------------------------------------------------------------- Misc

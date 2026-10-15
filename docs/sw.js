@@ -1,9 +1,10 @@
 // Service worker: makes the app work offline and receives shared files.
+// Only the app's own files are cached; files to print are never stored.
 // Bump VERSION whenever the files below change.
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `catprinter-shell-${VERSION}`;
 const RUNTIME_CACHE = "catprinter-runtime";
-const SHARED_CACHE = "catprinter-shared";
+const LEGACY_CACHES = ["catprinter-shared"];
 
 const SHELL_FILES = [
   "./",
@@ -19,6 +20,10 @@ const SHELL_FILES = [
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
 ];
+const SHELL_PATHS = new Set(SHELL_FILES.map((file) => new URL(file, self.location).pathname));
+
+// Files received from the share sheet, kept in memory until the page asks for them.
+let sharedFiles = [];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_FILES)));
@@ -28,7 +33,8 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     for (const key of await caches.keys()) {
-      if (key.startsWith("catprinter-shell-") && key !== SHELL_CACHE) await caches.delete(key);
+      const old = key.startsWith("catprinter-shell-") && key !== SHELL_CACHE;
+      if (old || LEGACY_CACHES.includes(key)) await caches.delete(key);
     }
     await self.clients.claim();
   })());
@@ -38,7 +44,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method === "POST" && url.pathname.endsWith("/compartir")) {
     event.respondWith(receiveShare(event.request));
-  } else if (event.request.method === "GET" && url.origin === location.origin) {
+  } else if (event.request.method === "GET" && url.origin === location.origin
+             && SHELL_PATHS.has(url.pathname)) {
     event.respondWith(staleWhileRevalidate(event.request));
   } else if (event.request.method === "GET" && url.hostname === "cdnjs.cloudflare.com") {
     // Versioned library URLs (pdf.js) never change: cache them for offline use.
@@ -70,16 +77,16 @@ async function cacheFirst(request) {
   return response;
 }
 
-// Share target: keeps the shared files for the page, which reads them on load.
+// Share target: keeps the shared files in memory and opens the page, which
+// asks for them with a "shared-files" message.
 async function receiveShare(request) {
   const form = await request.formData();
-  const cache = await caches.open(SHARED_CACHE);
-  const files = form.getAll("archivos").filter((f) => f instanceof File);
-  await Promise.all(files.map((file, i) => cache.put(`./compartido/${i}`, new Response(file, {
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-      "X-File-Name": encodeURIComponent(file.name),
-    },
-  }))));
+  sharedFiles = form.getAll("archivos").filter((f) => f instanceof File);
   return Response.redirect("./?compartido", 303);
 }
+
+self.addEventListener("message", (event) => {
+  if (event.data !== "shared-files") return;
+  event.source.postMessage({ type: "shared-files", files: sharedFiles });
+  sharedFiles = [];
+});

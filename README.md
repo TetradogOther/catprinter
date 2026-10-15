@@ -70,6 +70,18 @@ adds it to the application menu, to "Open With" and to the context menu of
 Files. For a top-level entry in that context menu, also install
 `python3-nautilus` and restart Files with `nautilus -q`.
 
+# Web app
+
+`docs/` contains a web app (in Spanish) that prints from the browser through
+Web Bluetooth, with the same processing and print settings as the desktop
+app. It is a PWA: it can be installed, works offline once loaded, appears in
+the Android share sheet and, when installed on the desktop, in "Open With".
+
+Publish it with GitHub Pages (Settings → Pages → Deploy from a branch →
+`main`, `/docs`). Web Bluetooth needs Chrome, Edge or Opera on Windows,
+macOS, Android or ChromeOS; on other browsers the page explains the
+alternatives. To try it locally, serve `docs/` over `http://localhost`.
+
 # Dual-mode printers (SC03h)
 
 Some printers, like the SC03h, also offer classic Bluetooth. BlueZ may then
